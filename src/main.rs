@@ -44,8 +44,6 @@ impl Default for Config {
     fn default() -> Self {
         let mut hs = HashSet::new();
         hs.insert("txt".to_owned());
-        // hs.insert("res".to_owned());
-        // hs.insert("req".to_owned());
         let config = Config {
             string: "ReplaceTargetText"
                 .to_owned(),
@@ -208,7 +206,7 @@ async fn callback(path: PathBuf, mut param: CallbackParameter) {
             if let Err(e) = replacer(&path) {
                 let _ = writeln!(
                     param.err_out,
-                    "{} は処理が正しく完了しませんでした。ファイルの文字エンコードがSJISまたはUTF-8でない可能性があります。\n    詳細な理由:{}",
+                    "{} は処理が正しく完了しませんでした。ファイルの文字エンコードがSJISまたはUTF-8でない可能性があります。\n\t詳細な理由:{}",
                     path.to_str().unwrap(),
                     e.to_string()
                 );

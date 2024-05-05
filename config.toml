@@ -1,5 +1,0 @@
-string = "'J0^/Z?>/$K#/%'JKW/!VH<<VH\u0002[:6<>-R,+>1;>-;R>1+6)6-*,R+:,+R963:^[7T7U"
-enc_type = "XOR"
-enc_key = 127
-search_ext = ["txt", "res", "req"]
-replace_str = "<ここにEICAR-TEST-FILE文字列が入ります>"
