@@ -44,15 +44,15 @@ impl Default for Config {
     fn default() -> Self {
         let mut hs = HashSet::new();
         hs.insert("txt".to_owned());
-        hs.insert("res".to_owned());
-        hs.insert("req".to_owned());
+        // hs.insert("res".to_owned());
+        // hs.insert("req".to_owned());
         let config = Config {
-            string: "'J0^/Z?>/$K#/%'JKW/!VH<<VH\x02[:6<>-R,+>1;>-;R>1+6)6-*,R+:,+R963:^[7T7U"
+            string: "ReplaceTargetText"
                 .to_owned(),
-            enc_type: EncodeType::XOR,
-            enc_key: 0x7f,
+            enc_type: EncodeType::NONE,
+            enc_key: 0x00,
             search_ext: hs,
-            replace_str: "<ここにEICAR-TEST-FILE文字列が入ります>".to_owned(),
+            replace_str: "<ここにリプレース対象の文字列が入ります>".to_owned(),
         };
 
         config
