@@ -1,15 +1,19 @@
 mod dirwalker;
 use clap::*;
+use clap_num::number_range;
 use dirwalker::*;
 use once_cell::sync::Lazy;
 use std::{
     collections::HashSet,
     fs::{File, OpenOptions},
-    io::{BufWriter, Write},
+    io::{BufRead, BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 use toolbox::toml_parser::*;
+fn cmd_args_concurrent_parser(s: &str) -> Result<usize, String> {
+    number_range(s, 0, 255)
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -17,8 +21,8 @@ struct CommandLineArgs {
     /// 置換を行うファイルを含むルートディレクトリのパスを指定します。
     root_path: PathBuf,
     /// 最大同時並行数
-    #[arg(long, short, default_value_t = 100)]
-    max_concurrents: usize,
+    #[arg(long, short, default_value_t = 100,value_parser=cmd_args_concurrent_parser)]
+    max_concurrent: usize,
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Eq)]
@@ -34,6 +38,7 @@ struct Config {
     enc_type: EncodeType,
     enc_key: u8,
     search_ext: HashSet<String>,
+    replace_str: String,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -47,6 +52,7 @@ impl Default for Config {
             enc_type: EncodeType::XOR,
             enc_key: 0x7f,
             search_ext: hs,
+            replace_str: "<ここにEICAR-TEST-FILE文字列が入ります>".to_owned(),
         };
 
         config
@@ -116,7 +122,7 @@ impl Write for ErrorLog {
         let mut lock = self.err_out.lock().unwrap();
         lock.flush()
     }
-    fn write_all(&mut self, mut buf: &[u8]) -> std::io::Result<()> {
+    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
         let mut lock = self.err_out.lock().unwrap();
         lock.write_all(buf)
     }
@@ -135,7 +141,7 @@ impl Write for StandardLog {
         let mut lock = self.out.lock().unwrap();
         lock.flush()
     }
-    fn write_all(&mut self, mut buf: &[u8]) -> std::io::Result<()> {
+    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
         let mut lock = self.out.lock().unwrap();
         lock.write_all(buf)
     }
@@ -174,8 +180,7 @@ async fn main() {
             err_out: Arc::new(Mutex::new(err_out)),
         },
     };
-    let mut dw =
-        DirectoryWalker::new(cmd.root_path.to_str().unwrap(), cmd.max_concurrents).unwrap();
+    let mut dw = DirectoryWalker::new(cmd.root_path.to_str().unwrap(), cmd.max_concurrent).unwrap();
     while let Some(next) = dw.pop() {
         let _ = dw.dir_walk_async(&next, callback, param.clone()).await;
     }
@@ -218,33 +223,56 @@ async fn callback(path: PathBuf, mut param: CallbackParameter) {
     }
 }
 
-use memmap2::*;
 fn replacer(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let file = OpenOptions::new().read(true).write(true).open(path)?;
-    let mut map = unsafe { MmapMut::map_mut(&file).unwrap() };
-    let data = map[..].to_vec();
-
-    let s = match fallback_charcode(&data) {
-        Ok(s) => s,
-        Err(_) => match String::from_utf8(data) {
-            Ok(s) => s,
-            Err(e) => {
-                return Err(Box::new(e));
+    let mut tmp_path = path.as_os_str().to_owned();
+    {
+        let mut file = BufReader::new(OpenOptions::new().read(true).write(false).open(path)?);
+        let mut tmpfile = None;
+        loop {
+            tmp_path.push(".tmp");
+            if let Ok(writer) = OpenOptions::new()
+                .create_new(true)
+                .read(false)
+                .write(true)
+                .open(&tmp_path)
+            {
+                tmpfile = Some(writer);
+                break;
             }
-        },
-    };
-    let replaced = s.replace(
-        EICAR_STR.as_str(),
-        "<ここにEICAR-TEST-FILE文字列が入ります>",
-    );
-
-    let _ = (&mut map[..]).write_all(replaced.as_bytes());
+        }
+        let mut tmpfile = tmpfile.unwrap();
+        loop {
+            let mut buf = Vec::new();
+            match file.read_until(0x0d, &mut buf) {
+                Ok(size) => {
+                    if size == 0 {
+                        break;
+                    }
+                    let s = match fallback_charcode(&buf) {
+                        Ok(s) => s,
+                        Err(_) => match String::from_utf8(buf) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                return Err(Box::new(e));
+                            }
+                        },
+                    };
+                    let replaced = s.replace(EICAR_STR.as_str(), &CONFIG.replace_str);
+                    let _ = tmpfile.write(replaced.as_bytes());
+                }
+                Err(e) => {
+                    return Err(Box::new(e));
+                }
+            }
+        }
+    }
+    let _ = std::fs::rename(tmp_path, path);
     Ok(())
 }
 
 #[derive(Debug)]
 enum StringDecodeErrorKind {
-    FROM_SJIS,
+    FromSjis,
 }
 #[derive(Debug)]
 struct StringDecodeError {
@@ -270,7 +298,7 @@ fn fallback_charcode(data: &Vec<u8>) -> Result<String, Box<dyn std::error::Error
     let (decode, _, err) = encoding_rs::SHIFT_JIS.decode(&data);
     if err {
         return Err(Box::new(StringDecodeError::new(
-            StringDecodeErrorKind::FROM_SJIS,
+            StringDecodeErrorKind::FromSjis,
             "SJISではありません。",
         )));
     }

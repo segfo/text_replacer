@@ -1,6 +1,6 @@
 [package]
 name = "txt_replacer"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,6 +9,7 @@ edition = "2021"
 once_cell = "1.18.0"
 toolbox={git="https://github.com/segfo/libtoolbox"}
 clap = {version="4.4.7",features=["derive"]}
+clap-num = "1.1.1"
 encoding_rs = "0.8.33"
 memmap2 = "0.9.0"
 tokio = { version = "1", features = ["full"] }
